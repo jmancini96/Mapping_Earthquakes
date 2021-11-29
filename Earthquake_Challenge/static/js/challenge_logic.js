@@ -1,7 +1,3 @@
-// Add GeoJSON data URL of USGS PAST 7 DAYS earthquake as well as tectonic Plate Boundary URL
-jsonEarthquakeDataURL="https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"
-jsonTectonicDataURL = "https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json"
-
 // create three tile layers based on Leatlet by mapbox styles API 
 let street = L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
     attribution: 'Map data © <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery (c) <a href="https://www.mapbox.com/">Mapbox</a>',
@@ -21,46 +17,52 @@ let light = L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}
     id: 'mapbox/light-v10',
     accessToken: API_Key});
 
-// define an object of base tile layers group
+// map layer with center, zoom, and default style 
+let map = L.map("mapid", {
+    center:[39.5,-98.5],
+    zoom: 3,
+    layers:[street] 
+});
+
+// base layer that holds all 3 maps
 let baseMaps = {
     "Streets": street,
     "Satellite": satelliteStreets,
     "Light": light
 };
 
-//declare overlays layer group 
-let overlayGroup = new L.layerGroup();
+// overlays layer groups 
+let plates = new L.layerGroup();
+let allEarthquakes = new L.layerGroup();
+let majorEarthquakes = new L.layerGroup();
 
-// define an object of overlays, always visible
+// define an object of overlays
 let overlays ={
-    "Tectonic Plates": overlayGroup,
-    "Earthquakes": overlayGroup
+    "Tectonic Plates": plates,
+    "Earthquakes": allEarthquakes,
+    "Major Earthquakes": majorEarthquakes
 };
 
-// initialize a map object 
-let mymap = L.map("mapid", {
-    center:[39.5,-98.5],
-    zoom: 3,
-    layers:[street]  // default map style
-});
-// add overlayGroup on map instantiation
-overlayGroup.addTo(mymap);
+// add layer groups on map instantiation
+plates.addTo(map);
+allEarthquakes.addTo(map);
+majorEarthquakes.addTo(map);
 
-// layers control, allow users to change which base layers and overlays are visible
-L.control.layers(baseMaps, overlays).addTo(mymap);
+// layers control
+L.control.layers(baseMaps, overlays).addTo(map);
 
-// Grabbing, parsing and add earthquake GeoJSON data(FeatureCollection) on overlays as a geoJSON layer
-d3.json(jsonEarthquakeDataURL).then((data) =>{
+// grabbing, parsing and adding earthquake GeoJSON data(FeatureCollection) on overlays as a geoJSON layer
+d3.json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson").then((data) =>{
     L.geoJSON(data,{
         //set the style for each circleMarker, pass the magnitude into two separate functions to calculate the color and radius.
         style: function (feature) {
             return {
                 opacity: 1,
                 fillOpacity: 1,
-                color: "#000000",  // black
+                color: "#000000",
                 stroke: true,
                 weight: 0.5,
-                fillColor: getColor(feature.properties.mag), // use function instead a single color
+                fillColor: getColor(feature.properties.mag), 
                 radius: getRadius(feature.properties.mag)
             }
         },
@@ -70,7 +72,7 @@ d3.json(jsonEarthquakeDataURL).then((data) =>{
                     .bindPopup("<h2> Earthquake Magnitude: " +feature.properties.mag+
                                 "</h2><hr><h3> Location: "+ feature.properties.place +"</h3>")
         }
-    }).addTo(overlayGroup);  
+    }).addTo(allEarthquakes);  
 });
 
 // This function determines the fillcolor of circleMarkers based on magtitude
@@ -125,10 +127,10 @@ legend.onAdd = function () {
 };
 
 // add legend on map
-legend.addTo(mymap);
+legend.addTo(map);
 
 // Grabbing, parsing and add tectonic Plates GeoJSON data(FeatureCollection) on map object as geoJSON layer
-d3.json(jsonTectonicDataURL).then((data) =>{
+d3.json("https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json").then((data) =>{
     L.geoJSON(data,{
         style: {
                 opacity: 1,
@@ -141,6 +143,43 @@ d3.json(jsonTectonicDataURL).then((data) =>{
                                 "</h3><hr><h4> PlateA: "+ feature.properties.PlateA +
                                 " &#124; PlateB: " +feature.properties.PlateB +"</h4>")
         }
-    }).addTo(overlayGroup);  
+    }).addTo(plates);  
 });
 
+d3.json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson").then(function(data) {
+    function styleInfo(feature) {
+        return {
+            opacity: 1,
+            fillOpacity: 1,
+            fillColor: getColor(feature.properties.mag),
+            color: "#000000",
+            radius: getRadius(feature.properties.mag),
+            stroke: true,
+            weight: 0.5
+        }            
+    };
+    function getColor(magnitude) {
+        if (magnitude > 5) {
+            return "#ea2c2c";
+        }
+        if (magnitude > 6) {
+            return "000000";
+        }
+        return "2c#ea82";
+    };
+    function getRadius(magnitude) {
+        if (magnitude === 0) {
+            return 1;
+        }
+        return magnitude * 4;
+    };
+    L.geoJSON(data, {
+        pointToLayer: function(feature, latlng) {
+            return L.circleMarker(latlng);
+        },
+        style: styleInfo,
+        onEachFeature: function(feature, layer) {
+            layer.bindPopup("Magnitude: " + feature.properties.mag + "<br>Location: " + feature.properties.place);
+        }
+    }).addTo(majorEarthquakes);
+});
